@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PluvIAmap — Sistema de Alerta Temprana</title>
+  
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  
+  <!-- Chart.js para Histogramas -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Supabase JS Client -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0b0f14; color: #cfd8e3; display: flex; flex-direction: column; height: 100vh; }
+    
+    nav { background: #141a22; display: flex; border-bottom: 1px solid #2a3440; }
+    nav button { background: none; border: none; color: #8a99ad; padding: 14px 20px; font-size: 14px; cursor: pointer; font-weight: bold; }
+    nav button.active { color: #00bcd4; border-bottom: 2px solid #00bcd4; background: #1a232e; }
+
+    .tab-content { display: none; height: calc(100vh - 49px); width: 100%; position: relative; }
+    .tab-content.active { display: flex; }
+
+    #mapa-pronostico { height: 100%; width: 70%; }
+    #sidebar-info { width: 30%; background: #141a22; border-left: 1px solid #2a3440; padding: 20px; overflow-y: auto; }
+
+    .card { background: #1a232e; border: 1px solid #2a3440; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+    .risk-badge { font-weight: bold; padding: 4px 8px; border-radius: 4px; color: #fff; display: inline-block; }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <button class="tab-btn" onclick="switchTab('tab-historico')">Datos Históricos</button>
+    <button class="tab-btn active" onclick="switchTab('tab-pronostico')">Pronóstico & Riesgo</button>
+    <button class="tab-btn" onclick="switchTab('tab-metodologia')">Metodología & Alertas</button>
+  </nav>
+
+  <!-- Pestaña 1: Datos Históricos -->
+  <div id="tab-historico" class="tab-content">
+    <div style="padding: 20px;">
+      <h2>Histórico de Precipitación y Suelo (7 Días)</h2>
+      <p style="margin-top: 10px;">Seleccione capas meteorológicas de CHIRPS v3 y ERA5-Land para inspeccionar eventos pasados.</p>
+    </div>
+  </div>
+
+  <!-- Pestaña 2: Pronóstico & Mapa de Riesgo -->
+  <div id="tab-pronostico" class="tab-content active">
+    <div id="mapa-pronostico"></div>
+    
+    <div id="sidebar-info">
+      <h3>Análisis de Cuadrícula</h3>
+      <p style="font-size: 12px; color: #8a99ad; margin-bottom: 15px;">Haga clic sobre un polígono de la grilla en el mapa para ver sus métricas.</p>
+      
+      <div id="detalles-celda" class="card">
+        <p><i>Seleccione una celda en el mapa</i></p>
+      </div>
+
+      <div class="card">
+        <canvas id="histogramaFactor"></canvas>
+      </div>
+
+      <button id="btn-gps" onclick="obtenerUbicacionGPS()" style="width:100%; padding: 10px; background: #1280a0; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+        📍 Usar mi Ubicación (Radio 10 km)
+      </button>
+    </div>
+  </div>
+
+  <!-- Pestaña 3: Metodología -->
+  <div id="tab-metodologia" class="tab-content">
+    <div style="padding: 30px; max-width: 800px; margin: auto;">
+      <h2>Metodología del Índice R_max</h2>
+      <p style="margin-top: 10px;">Matriz multicriterio de evaluación de riesgos basada en ponderaciones hidrometeorológicas e índices topográficos sobre celdas de 0.05° (~5.5 km).</p>
+    </div>
+  </div>
+
+  <script>
+    // Configuración Supabase
+    const SUPABASE_URL = "https://mhkbecpnmhiwcfpdazgu.supabase.co";
+    const SUPABASE_ANON_KEY = "PEGA_AQUI_TU_CLAVE_ANON_KEY"; 
+    const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // Gestor de Pestañas
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+      document.getElementById(tabId).classList.add('active');
+      event.target.classList.add('active');
+    }
+
+    // Inicializar Mapa centrado en Venezuela
+    const map = L.map('mapa-pronostico').setView([10.5, -66.9], 6);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap &copy; CARTO'
+    }).addTo(map);
+
+    let chartInstance = null;
+
+    // Geolocalización
+    function obtenerUbicacionGPS() {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(position => {
+          const { latitude, longitude } = position.coords;
+          map.setView([latitude, longitude], 11);
+          L.marker([latitude, longitude]).addTo(map)
+            .bindPopup("Ubicación actual del usuario").openPopup();
+        }, () => alert("No se pudo obtener la geolocalización."));
+      } else {
+        alert("Tu navegador no soporta geolocalización.");
+      }
+    }
+  </script>
+</body>
+</html>
