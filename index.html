@@ -130,13 +130,19 @@ function switchTab(tabId) {
 
         // Convertir registros SQL a GeoJSON interactivo
       const features = data.map(item => {
-  // Limpiamos el prefijo SRID que guarda PostGIS para obtener el texto WKT limpio
-  const wktLimpio = item.geom ? item.geom.replace(/^SRID=\d+;/, '') : '';
+  // Si item.geom ya es un objeto GeoJSON, se usa directo.
+  // Si viene en texto WKT, se convierte con wellknown.
+  let geometryData = item.geom;
   
+  if (typeof item.geom === 'string') {
+    const wktLimpio = item.geom.replace(/^SRID=\d+;/, '');
+    geometryData = wellknown(wktLimpio);
+  }
+
   return {
     type: "Feature",
     properties: { ...item },
-    geometry: wellknown(wktLimpio) // Convierte el WKT a GeoJSON que Leaflet sí comprende
+    geometry: geometryData
   };
 });
 
