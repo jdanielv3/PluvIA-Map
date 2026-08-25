@@ -82,38 +82,131 @@
   <script>
     // Configuración Supabase
     const SUPABASE_URL = "https://mhkbecpnmhiwcfpdazgu.supabase.co";
-    const SUPABASE_ANON_KEY = "PEGA_AQUI_TU_CLAVE_ANON_KEY"; 
+    // ⚠️ Reemplaza esta clave por tu anon / public key real de Supabase
+    const SUPABASE_ANON_KEY = "sb_publishable_19oa93T11cZaS9gyai3AVQ_D3Ne_2C0"; 
+    
     const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // Gestor de Pestañas
-    function switchTab(tabId) {
-      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-      document.getElementById(tabId).classList.add('active');
-      event.target.classList.add('active');
-    }
+    // Gestor de Pestañas con ajuste dinámico de mapa
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  
+  document.getElementById(tabId).classList.add('active');
+  
+  // Marca el botón activo dinámicamente según el evento
+  if (window.event && window.event.currentTarget) {
+    window.event.currentTarget.classList.add('active');
+  }
 
-    // Inicializar Mapa centrado en Venezuela
-    const map = L.map('mapa-pronostico').setView([10.5, -66.9], 6);
+  // Recalcular dimensiones del mapa si se vuelve a la pestaña de pronóstico
+  if (tabId === 'tab-pronostico' && map) {
+    setTimeout(() => { map.invalidateSize(); }, 200);
+  }
+}
+
+    // Inicializar Mapa centrado en Caracas / Venezuela
+    const map = L.map('mapa-pronostico').setView([10.48, -66.90], 10);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; OpenStreetMap &copy; CARTO'
     }).addTo(map);
 
     let chartInstance = null;
+    let geojsonLayer = null;
 
-    // Geolocalización
+    // --- Cargar Celdas desde Supabase ---
+    async function cargarGrillaRiesgo() {
+      try {
+        const { data, error } = await _supabase
+          .from('grilla_riesgo')
+          .select('id, grid_id, r_max, r_hydro, r_slide, dominant, clase, color, h_p3d, h_era5_suelo, h_openmeteo_48h, v_slope, st_asgeojson(geom)');
+
+        if (error) throw error;
+
+        if (!data || data.length === 0) {
+          console.log("Conexión exitosa. Esperando datos en la tabla 'grilla_riesgo'.");
+          return;
+        }
+
+        // Convertir registros SQL a GeoJSON interactivo
+        const features = data.map(item => ({
+          type: "Feature",
+          geometry: JSON.parse(item.st_asgeojson),
+          properties: { ...item }
+        }));
+
+        const geojsonData = { type: "FeatureCollection", features: features };
+
+        if (geojsonLayer) map.removeLayer(geojsonLayer);
+
+        geojsonLayer = L.geoJSON(geojsonData, {
+          style: (feature) => ({
+            fillColor: feature.properties.color || '#1a9850',
+            weight: 1,
+            opacity: 0.8,
+            color: '#ffffff',
+            fillOpacity: 0.55
+          }),
+          onEachFeature: (feature, layer) => {
+            layer.on('click', () => mostrarEstadisticasCelda(feature.properties));
+            layer.bindTooltip(`Celda #${feature.properties.grid_id} — Riesgo: ${feature.properties.clase}`, { sticky: true });
+          }
+        }).addTo(map);
+
+      } catch (err) {
+        console.error("Error al consultar Supabase:", err.message);
+      }
+    }
+
+    // --- Mostrar métricas en el panel e histograma ---
+    function mostrarEstadisticasCelda(props) {
+      const container = document.getElementById('detalles-celda');
+      container.innerHTML = `
+        <h4 style="color:#00bcd4;">Cuadrícula #${props.grid_id}</h4>
+        <p style="margin-top:8px;">Índice R_max: <span class="risk-badge" style="background:${props.color}">${props.r_max} (${props.clase})</span></p>
+        <p style="margin-top:4px; font-size:13px;">Factor Prevalente: <b>${props.dominant}</b></p>
+        <hr style="border-color:#2a3440; margin: 10px 0;">
+        <p style="font-size:12px;">Riesgo Hidrológico (A): <b>${props.r_hydro}</b></p>
+        <p style="font-size:12px;">Riesgo Deslizamiento (B): <b>${props.r_slide}</b></p>
+      `;
+
+      const ctx = document.getElementById('histogramaFactor').getContext('2d');
+      if (chartInstance) chartInstance.destroy();
+
+      chartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['Lluvia 3D', 'Saturación', 'Pronóstico', 'Pendiente'],
+          datasets: [{
+            label: 'Normalizado (0 - 1)',
+            data: [props.h_p3d || 0, props.h_era5_suelo || 0, props.h_openmeteo_48h || 0, props.v_slope || 0],
+            backgroundColor: '#00bcd4'
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: { y: { min: 0, max: 1 } },
+          plugins: { legend: { display: false } }
+        }
+      });
+    }
+
+    // Ubicación GPS
     function obtenerUbicacionGPS() {
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(position => {
           const { latitude, longitude } = position.coords;
           map.setView([latitude, longitude], 11);
           L.marker([latitude, longitude]).addTo(map)
-            .bindPopup("Ubicación actual del usuario").openPopup();
+            .bindPopup("<b>Ubicación del Dispositivo</b>").openPopup();
         }, () => alert("No se pudo obtener la geolocalización."));
       } else {
         alert("Tu navegador no soporta geolocalización.");
       }
     }
+
+    // Ejecutar al cargar la página
+    cargarGrillaRiesgo();
   </script>
 </body>
 </html>
