@@ -15,6 +15,9 @@
   <!-- Supabase JS Client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
+  <!-- LIBRERÍA CRÍTICA: WKT Parser para parsear la columna geom -->
+  <script src="https://unpkg.com/wellknown@0.5.0/wellknown.js"></script>
+
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0b0f14; color: #cfd8e3; display: flex; flex-direction: column; height: 100vh; }
@@ -82,28 +85,25 @@
   <script>
     // Configuración Supabase
     const SUPABASE_URL = "https://mhkbecpnmhiwcfpdazgu.supabase.co";
-    // ⚠️ Reemplaza esta clave por tu anon / public key real de Supabase
     const SUPABASE_ANON_KEY = "sb_publishable_19oa93T11cZaS9gyai3AVQ_D3Ne_2C0"; 
     
     const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // Gestor de Pestañas con ajuste dinámico de mapa
-function switchTab(tabId) {
-  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-  
-  document.getElementById(tabId).classList.add('active');
-  
-  // Marca el botón activo dinámicamente según el evento
-  if (window.event && window.event.currentTarget) {
-    window.event.currentTarget.classList.add('active');
-  }
+    // Gestor de Pestañas
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+      
+      document.getElementById(tabId).classList.add('active');
+      
+      if (window.event && window.event.currentTarget) {
+        window.event.currentTarget.classList.add('active');
+      }
 
-  // Recalcular dimensiones del mapa si se vuelve a la pestaña de pronóstico
-  if (tabId === 'tab-pronostico' && map) {
-    setTimeout(() => { map.invalidateSize(); }, 200);
-  }
-}
+      if (tabId === 'tab-pronostico' && map) {
+        setTimeout(() => { map.invalidateSize(); }, 200);
+      }
+    }
 
     // Inicializar Mapa centrado en Caracas / Venezuela
     const map = L.map('mapa-pronostico').setView([10.48, -66.90], 10);
@@ -117,34 +117,38 @@ function switchTab(tabId) {
     // --- Cargar Celdas desde Supabase ---
     async function cargarGrillaRiesgo() {
       try {
+        // Paginación amplia para cargar las 15,170 celdas sin el límite por defecto de 1000
         const { data, error } = await _supabase
           .from('grilla_riesgo')
-          .select('grid_id, r_max, r_hydro, r_slide, dominant, clase, color, h_p3d, h_era5_suelo, h_openmeteo_48h, v_slope, geom');
+          .select('grid_id, r_max, r_hydro, r_slide, dominant, clase, color, h_p3d, h_era5_suelo, h_openmeteo_48h, v_slope, geom')
+          .range(0, 16000);
 
         if (error) throw error;
 
         if (!data || data.length === 0) {
-          console.log("Conexión exitosa. Esperando datos en la tabla 'grilla_riesgo'.");
+          console.log("No se devolvieron datos de la base de datos.");
           return;
         }
 
-        // Convertir registros SQL a GeoJSON interactivo
-      const features = data.map(item => {
-  // Si item.geom ya es un objeto GeoJSON, se usa directo.
-  // Si viene en texto WKT, se convierte con wellknown.
-  let geometryData = item.geom;
-  
-  if (typeof item.geom === 'string') {
-    const wktLimpio = item.geom.replace(/^SRID=\d+;/, '');
-    geometryData = wellknown(wktLimpio);
-  }
+        // Convertir registros a GeoJSON procesando la geometría WKT o JSON
+        const features = data.map(item => {
+          let geometryData = null;
 
-  return {
-    type: "Feature",
-    properties: { ...item },
-    geometry: geometryData
-  };
-});
+          if (typeof item.geom === 'object' && item.geom !== null) {
+            geometryData = item.geom;
+          } else if (typeof item.geom === 'string') {
+            const wktLimpio = item.geom.replace(/^SRID=\d+;/, '');
+            if (typeof wellknown !== 'undefined') {
+              geometryData = wellknown(wktLimpio);
+            }
+          }
+
+          return {
+            type: "Feature",
+            properties: { ...item },
+            geometry: geometryData
+          };
+        }).filter(f => f.geometry !== null);
 
         const geojsonData = { type: "FeatureCollection", features: features };
 
