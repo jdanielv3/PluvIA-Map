@@ -14,10 +14,10 @@ if not SUPABASE_KEY:
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# --- Bounding Box de Venezuela ---
+# --- Bounding Box de Venezuela (Resolución ~22 km) ---
 LAT_MIN, LAT_MAX = 0.50, 12.50
 LON_MIN, LON_MAX = -73.50, -59.50
-STEP = 0.10  # Resolución a Nivel Nacional (~11 km por celda)
+STEP = 0.20  
 
 def crear_grilla_nacional():
     poligonos = []
@@ -43,14 +43,14 @@ def crear_grilla_nacional():
             grid_id += 1
     return gpd.GeoDataFrame(poligonos, crs="EPSG:4326")
 
-def obtener_datos_lote(lote_coords):
+def obtener_datos_lote_masivo(lote_coords):
     lats = ",".join([str(c[0]) for c in lote_coords])
     lons = ",".join([str(c[1]) for c in lote_coords])
     
     url = f"https://api.open-meteo.com/v1/forecast?latitude={lats}&longitude={lons}&hourly=precipitation&past_days=3&forecast_days=2"
     
     try:
-        r = requests.get(url, timeout=25).json()
+        r = requests.get(url, timeout=30).json()
         if not isinstance(r, list):
             r = [r]
             
@@ -66,23 +66,25 @@ def obtener_datos_lote(lote_coords):
         return [(0.0, 0.0)] * len(lote_coords)
 
 def procesar_nacional():
-    print("Creando malla espacial para Venezuela...")
+    print("Creando malla espacial optimizada para Venezuela...")
     gdf = crear_grilla_nacional()
     total_celdas = len(gdf)
     print(f"Malla creada con {total_celdas} celdas.")
     
     registros = []
-    batch_size = 50
+    batch_size = 100  # Consultas de 100 en 100
     coords_lista = [(row['c_lat'], row['c_lon']) for idx, row in gdf.iterrows()]
     
     for i in range(0, total_celdas, batch_size):
         lote_coords = coords_lista[i:i + batch_size]
-        print(f"Procesando celdas {i+1} a {min(i+batch_size, total_celdas)}...")
+        print(f"Descargando datos hidrometeorológicos (Lote {i+1} a {min(i+batch_size, total_celdas)})...")
         
-        datos_meteo = obtener_datos_lote(lote_coords)
+        datos_meteo = obtener_datos_lote_masivo(lote_coords)
         
         for idx_lote, (p3d_mm, openmeteo_48h_mm) in enumerate(datos_meteo):
             real_idx = i + idx_lote
+            if real_idx >= total_celdas:
+                break
             row = gdf.iloc[real_idx]
             grid_id = int(row['grid_id'])
             c_lat = row['c_lat']
@@ -125,16 +127,13 @@ def procesar_nacional():
                 "color": color
             })
 
-    print("Limpiando datos antiguos en Supabase...")
+    print("Limpiando registros antiguos en Supabase...")
     supabase.table('grilla_riesgo').delete().neq('grid_id', 0).execute()
     
-    print("Insertando nuevos registros en Supabase...")
-    insert_batch = 200
-    for k in range(0, len(registros), insert_batch):
-        chunk = registros[k:k + insert_batch]
-        supabase.table('grilla_riesgo').insert(chunk).execute()
+    print("Cargando nuevos datos a Supabase en bloque...")
+    supabase.table('grilla_riesgo').insert(registros).execute()
         
-    print("¡Proceso finalizado exitosamente en la nube!")
+    print("¡Proceso completado con éxito en la nube!")
 
 if __name__ == "__main__":
     procesar_nacional()
