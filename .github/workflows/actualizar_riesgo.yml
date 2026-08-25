@@ -1,0 +1,31 @@
+name: Pipeline Meteorológico Automatizado - PluvIAmap
+
+on:
+  schedule:
+    # Se ejecuta automáticamente cada 6 horas (00:00, 06:00, 12:00, 18:00 UTC)
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # Permite ejecutar el script manualmente desde el botón "Run workflow"
+
+jobs:
+  actualizar-datos:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar código del repositorio
+        uses: actions/checkout@v3
+
+      - name: Configurar entorno Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Instalar dependencias espaciales y de API
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Ejecutar ETL y actualizar Supabase
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python etl_pipeline.py
