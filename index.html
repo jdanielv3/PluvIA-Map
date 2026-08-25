@@ -119,7 +119,7 @@ function switchTab(tabId) {
       try {
         const { data, error } = await _supabase
           .from('grilla_riesgo')
-          .select('grid_id, r_max, r_hydro, r_slide, dominant, clase, color, h_p3d, h_era5_suelo, h_openmeteo_48h, v_slope, st_asgeojson(geom)');
+          .select('grid_id, r_max, r_hydro, r_slide, dominant, clase, color, h_p3d, h_era5_suelo, h_openmeteo_48h, v_slope, geom');
 
         if (error) throw error;
 
