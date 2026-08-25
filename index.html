@@ -5,32 +5,158 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PluvIAmap — Sistema de Alerta Temprana</title>
 
-  <!-- Leaflet CSS & JS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-  <!-- Chart.js para Histogramas -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-  <!-- Supabase JS Client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0b0f14; color: #cfd8e3; display: flex; flex-direction: column; height: 100vh; }
+    body { 
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
+      background: #0b0f14; 
+      color: #cfd8e3; 
+      display: flex; 
+      flex-direction: column; 
+      height: 100vh; 
+      overflow: hidden;
+    }
 
-    nav { background: #141a22; display: flex; border-bottom: 1px solid #2a3440; }
-    nav button { background: none; border: none; color: #8a99ad; padding: 14px 20px; font-size: 14px; cursor: pointer; font-weight: bold; }
-    nav button.active { color: #00bcd4; border-bottom: 2px solid #00bcd4; background: #1a232e; }
+    nav { 
+      background: #141a22; 
+      display: flex; 
+      border-bottom: 1px solid #2a3440; 
+      flex-shrink: 0;
+    }
+    nav button { 
+      background: none; 
+      border: none; 
+      color: #8a99ad; 
+      padding: 14px 22px; 
+      font-size: 13px; 
+      cursor: pointer; 
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      transition: all 0.2s;
+    }
+    nav button:hover { color: #b0c4de; background: #1a232e; }
+    nav button.active { 
+      color: #00e5ff; 
+      border-bottom: 2px solid #00e5ff; 
+      background: #1a232e; 
+    }
 
     .tab-content { display: none; height: calc(100vh - 49px); width: 100%; position: relative; }
     .tab-content.active { display: flex; }
 
-    #mapa-pronostico { height: 100%; width: 70%; }
-    #sidebar-info { width: 30%; background: #141a22; border-left: 1px solid #2a3440; padding: 20px; overflow-y: auto; }
+    #mapa-pronostico { height: 100%; flex: 1; position: relative; }
 
-    .card { background: #1a232e; border: 1px solid #2a3440; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
-    .risk-badge { font-weight: bold; padding: 4px 8px; border-radius: 4px; color: #fff; display: inline-block; }
+    #sidebar-info { 
+      width: 340px; 
+      min-width: 340px;
+      background: #141a22; 
+      border-left: 1px solid #2a3440; 
+      padding: 20px; 
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .card { 
+      background: #1a232e; 
+      border: 1px solid #2a3440; 
+      border-radius: 10px; 
+      padding: 16px; 
+    }
+
+    .card h3 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #e0e6ed;
+      margin-bottom: 6px;
+    }
+
+    .card p.hint {
+      font-size: 12px; 
+      color: #8a99ad; 
+      line-height: 1.4;
+    }
+
+    .risk-badge { 
+      font-weight: 700; 
+      padding: 4px 10px; 
+      border-radius: 6px; 
+      color: #fff; 
+      display: inline-block;
+      font-size: 13px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    .metric-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+      border-bottom: 1px solid #2a3440;
+      font-size: 13px;
+    }
+    .metric-row:last-child { border-bottom: none; }
+    .metric-label { color: #8a99ad; }
+    .metric-value { color: #e0e6ed; font-weight: 600; }
+
+    #btn-gps {
+      width: 100%; 
+      padding: 12px; 
+      background: linear-gradient(135deg, #0ea5a0, #1280a0); 
+      color: white; 
+      border: none; 
+      border-radius: 8px; 
+      cursor: pointer; 
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: 0.3px;
+      transition: transform 0.15s, box-shadow 0.15s;
+      box-shadow: 0 4px 12px rgba(18, 128, 160, 0.25);
+    }
+    #btn-gps:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(18, 128, 160, 0.35);
+    }
+
+    /* Leyenda */
+    .legend {
+      background: rgba(20, 26, 34, 0.92);
+      backdrop-filter: blur(8px);
+      padding: 12px 14px;
+      border-radius: 8px;
+      border: 1px solid #2a3440;
+      font-size: 12px;
+      color: #cfd8e3;
+      line-height: 1.8;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+    .legend i {
+      width: 14px;
+      height: 14px;
+      float: left;
+      margin-right: 8px;
+      margin-top: 3px;
+      border-radius: 3px;
+      opacity: 0.85;
+    }
+    .legend-title {
+      font-weight: 700;
+      margin-bottom: 6px;
+      color: #e0e6ed;
+      font-size: 13px;
+    }
+
+    /* Scrollbar elegante */
+    #sidebar-info::-webkit-scrollbar { width: 6px; }
+    #sidebar-info::-webkit-scrollbar-track { background: transparent; }
+    #sidebar-info::-webkit-scrollbar-thumb { background: #2a3440; border-radius: 3px; }
+    #sidebar-info::-webkit-scrollbar-thumb:hover { background: #3a4450; }
   </style>
 <base target="_blank">
 </head>
@@ -42,169 +168,224 @@
     <button class="tab-btn" onclick="switchTab('tab-metodologia')">Metodología & Alertas</button>
   </nav>
 
-  <!-- Pestaña 1: Datos Históricos -->
   <div id="tab-historico" class="tab-content">
-    <div style="padding: 20px;">
-      <h2>Histórico de Precipitación y Suelo (7 Días)</h2>
-      <p style="margin-top: 10px;">Seleccione capas meteorológicas de CHIRPS v3 y ERA5-Land para inspeccionar eventos pasados.</p>
+    <div style="padding: 30px; max-width: 900px; margin: auto;">
+      <h2 style="color:#e0e6ed; margin-bottom: 12px;">Histórico de Precipitación y Suelo (7 Días)</h2>
+      <p style="color:#8a99ad; line-height: 1.6;">Seleccione capas meteorológicas de CHIRPS v3 y ERA5-Land para inspeccionar eventos pasados.</p>
     </div>
   </div>
 
-  <!-- Pestaña 2: Pronóstico & Mapa de Riesgo -->
   <div id="tab-pronostico" class="tab-content active">
     <div id="mapa-pronostico"></div>
 
     <div id="sidebar-info">
-      <h3>Análisis de Cuadrícula</h3>
-      <p style="font-size: 12px; color: #8a99ad; margin-bottom: 15px;">Haga clic sobre un polígono de la grilla en el mapa para ver sus métricas.</p>
+      <div class="card">
+        <h3>Análisis de Cuadrícula</h3>
+        <p class="hint">Haga clic sobre una celda del mapa para ver sus métricas detalladas.</p>
+      </div>
 
       <div id="detalles-celda" class="card">
-        <p><i>Seleccione una celda en el mapa</i></p>
+        <p style="color:#8a99ad; font-size: 13px; text-align: center; padding: 20px 0;">
+          <i>Seleccione una celda en el mapa</i>
+        </p>
       </div>
 
-      <div class="card">
-        <canvas id="histogramaFactor"></canvas>
+      <div class="card" style="flex-shrink: 0;">
+        <canvas id="histogramaFactor" height="180"></canvas>
       </div>
 
-      <button id="btn-gps" onclick="obtenerUbicacionGPS()" style="width:100%; padding: 10px; background: #1280a0; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+      <button id="btn-gps" onclick="obtenerUbicacionGPS()">
         📍 Usar mi Ubicación (Radio 10 km)
       </button>
     </div>
   </div>
 
-  <!-- Pestaña 3: Metodología -->
   <div id="tab-metodologia" class="tab-content">
     <div style="padding: 30px; max-width: 800px; margin: auto;">
-      <h2>Metodología del Índice R_max</h2>
-      <p style="margin-top: 10px;">Matriz multicriterio de evaluación de riesgos basada en ponderaciones hidrometeorológicas e índices topográficos sobre celdas de 0.05° (~5.5 km).</p>
+      <h2 style="color:#e0e6ed; margin-bottom: 12px;">Metodología del Índice R_max</h2>
+      <p style="color:#8a99ad; line-height: 1.6;">Matriz multicriterio de evaluación de riesgos basada en ponderaciones hidrometeorológicas e índices topográficos sobre celdas de 0.05° (~5.5 km).</p>
     </div>
   </div>
 
   <script>
-    // Configuración Supabase
     const SUPABASE_URL = "https://mhkbecpnmhiwcfpdazgu.supabase.co";
     const SUPABASE_ANON_KEY = "sb_publishable_19oa93T11cZaS9gyai3AVQ_D3Ne_2C0"; 
-
     const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // Gestor de Pestañas
     function switchTab(tabId) {
       document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
       document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-
       document.getElementById(tabId).classList.add('active');
-
       if (window.event && window.event.currentTarget) {
         window.event.currentTarget.classList.add('active');
       }
-
       if (tabId === 'tab-pronostico' && map) {
-        setTimeout(() => { map.invalidateSize(); }, 200);
+        setTimeout(() => map.invalidateSize(), 200);
       }
     }
 
-    // Inicializar Mapa centrado en Caracas / Venezuela
-    const map = L.map('mapa-pronostico').setView([10.48, -66.90], 10);
+    // Mapa centrado en Caracas, zoom 9 (vista regional cómoda)
+    const map = L.map('mapa-pronostico').setView([10.48, -66.90], 9);
+
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap &copy; CARTO'
+      attribution: '&copy; OpenStreetMap &copy; CARTO',
+      subdomains: 'abcd',
+      maxZoom: 19
     }).addTo(map);
 
     let chartInstance = null;
     let geojsonLayer = null;
 
-    // --- Cargar Celdas desde Supabase vía RPC (sin límite de 1000 filas) ---
     async function cargarGrillaRiesgo() {
       try {
-        console.log("Cargando datos desde Supabase...");
-
-        // Usamos la función RPC que devuelve GeoJSON completo con ST_AsGeoJSON
         const { data, error } = await _supabase.rpc('get_grilla_riesgo');
-
         if (error) throw error;
-
         if (!data || !data.features || data.features.length === 0) {
-          console.warn("No se devolvieron datos de la base de datos.");
           document.getElementById('detalles-celda').innerHTML = 
-            '<p style="color:#ff6b6b;">⚠️ No hay datos disponibles en la tabla grilla_riesgo.</p>';
+            '<p style="color:#ff6b6b; text-align:center; padding:20px 0;">⚠️ No hay datos disponibles.</p>';
           return;
         }
-
-        console.log(`Cargadas ${data.features.length} celdas.`);
 
         if (geojsonLayer) map.removeLayer(geojsonLayer);
 
         geojsonLayer = L.geoJSON(data, {
           style: (feature) => ({
             fillColor: feature.properties.color || '#1a9850',
-            weight: 1,
-            opacity: 0.8,
-            color: '#ffffff',
-            fillOpacity: 0.55
+            weight: 0.3,           // Borde muy fino
+            opacity: 0.4,          // Borde casi invisible
+            color: '#000000',      // Borde negro para no competir con el fill
+            fillOpacity: 0.65      // Más opaco para que el color se vea bien
           }),
           onEachFeature: (feature, layer) => {
-            layer.on('click', () => mostrarEstadisticasCelda(feature.properties));
-            layer.bindTooltip(`Celda #${feature.properties.grid_id} — Riesgo: ${feature.properties.clase}`, { sticky: true });
+            layer.on({
+              click: () => mostrarEstadisticasCelda(feature.properties),
+              mouseover: (e) => {
+                e.target.setStyle({ weight: 1.5, color: '#00e5ff', fillOpacity: 0.85 });
+              },
+              mouseout: (e) => {
+                geojsonLayer.resetStyle(e.target);
+              }
+            });
+            layer.bindTooltip(
+              `Celda #${feature.properties.grid_id}<br>Riesgo: <b>${feature.properties.clase}</b>`, 
+              { 
+                sticky: true, 
+                direction: 'top',
+                className: 'custom-tooltip',
+                opacity: 0.95
+              }
+            );
           }
         }).addTo(map);
 
-        // Ajustar el mapa a los límites de los datos
-        map.fitBounds(geojsonLayer.getBounds());
-
       } catch (err) {
-        console.error("Error al consultar Supabase:", err);
+        console.error("Error:", err);
         document.getElementById('detalles-celda').innerHTML = 
-          `<p style="color:#ff6b6b;">❌ Error: ${err.message}</p>`;
+          `<p style="color:#ff6b6b; text-align:center; padding:20px 0;">❌ ${err.message}</p>`;
       }
     }
 
-    // --- Mostrar métricas en el panel e histograma ---
+    // Leyenda
+    const legend = L.control({position: 'bottomleft'});
+    legend.onAdd = function () {
+      const div = L.DomUtil.create('div', 'legend');
+      div.innerHTML = `
+        <div class="legend-title">Nivel de Riesgo</div>
+        <i style="background:#1a9850"></i> Bajo<br>
+        <i style="background:#ffffbf; border:1px solid #555;"></i> Moderado<br>
+        <i style="background:#fdae61"></i> Alto<br>
+        <i style="background:#d7191c"></i> Severo
+      `;
+      return div;
+    };
+    legend.addTo(map);
+
     function mostrarEstadisticasCelda(props) {
       const container = document.getElementById('detalles-celda');
       container.innerHTML = `
-        <h4 style="color:#00bcd4;">Cuadrícula #${props.grid_id}</h4>
-        <p style="margin-top:8px;">Índice R_max: <span class="risk-badge" style="background:${props.color}">${props.r_max} (${props.clase})</span></p>
-        <p style="margin-top:4px; font-size:13px;">Factor Prevalente: <b>${props.dominant}</b></p>
-        <hr style="border-color:#2a3440; margin: 10px 0;">
-        <p style="font-size:12px;">Riesgo Hidrológico (A): <b>${props.r_hydro}</b></p>
-        <p style="font-size:12px;">Riesgo Deslizamiento (B): <b>${props.r_slide}</b></p>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+          <h4 style="color:#00e5ff; font-size:15px;">Cuadrícula #${props.grid_id}</h4>
+          <span class="risk-badge" style="background:${props.color}">${props.clase}</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Índice R_max</span>
+          <span class="metric-value" style="color:${props.color}">${props.r_max}</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Factor Prevalente</span>
+          <span class="metric-value">${props.dominant}</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Riesgo Hidrológico (A)</span>
+          <span class="metric-value">${props.r_hydro}</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Riesgo Deslizamiento (B)</span>
+          <span class="metric-value">${props.r_slide}</span>
+        </div>
       `;
 
       const ctx = document.getElementById('histogramaFactor').getContext('2d');
       if (chartInstance) chartInstance.destroy();
+
+      const valores = [props.h_p3d || 0, props.h_era5_suelo || 0, props.h_openmeteo_48h || 0, props.v_slope || 0];
+      const colores = valores.map(v => {
+        if (v < 0.3) return '#1a9850';
+        if (v < 0.55) return '#ffffbf';
+        if (v < 0.75) return '#fdae61';
+        return '#d7191c';
+      });
 
       chartInstance = new Chart(ctx, {
         type: 'bar',
         data: {
           labels: ['Lluvia 3D', 'Saturación', 'Pronóstico', 'Pendiente'],
           datasets: [{
-            label: 'Normalizado (0 - 1)',
-            data: [props.h_p3d || 0, props.h_era5_suelo || 0, props.h_openmeteo_48h || 0, props.v_slope || 0],
-            backgroundColor: '#00bcd4'
+            label: 'Índice (0–1)',
+            data: valores,
+            backgroundColor: colores,
+            borderRadius: 4,
+            borderSkipped: false
           }]
         },
         options: {
           responsive: true,
-          scales: { y: { min: 0, max: 1 } },
-          plugins: { legend: { display: false } }
+          maintainAspectRatio: false,
+          scales: { 
+            y: { min: 0, max: 1, grid: { color: '#2a3440' }, ticks: { color: '#8a99ad', font: { size: 11 } } },
+            x: { grid: { display: false }, ticks: { color: '#8a99ad', font: { size: 11 } } }
+          },
+          plugins: { 
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#1a232e',
+              titleColor: '#e0e6ed',
+              bodyColor: '#cfd8e3',
+              borderColor: '#2a3440',
+              borderWidth: 1
+            }
+          }
         }
       });
     }
 
-    // Ubicación GPS
     function obtenerUbicacionGPS() {
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(position => {
           const { latitude, longitude } = position.coords;
-          map.setView([latitude, longitude], 11);
-          L.marker([latitude, longitude]).addTo(map)
-            .bindPopup("<b>Ubicación del Dispositivo</b>").openPopup();
+          map.setView([latitude, longitude], 12);
+          L.circle([latitude, longitude], {
+            color: '#00e5ff',
+            fillColor: '#00e5ff',
+            fillOpacity: 0.15,
+            radius: 10000
+          }).addTo(map).bindPopup("<b>Radio de 10 km</b>").openPopup();
         }, () => alert("No se pudo obtener la geolocalización."));
       } else {
         alert("Tu navegador no soporta geolocalización.");
       }
     }
 
-    // Ejecutar al cargar la página
     cargarGrillaRiesgo();
   </script>
 </body>
