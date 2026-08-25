@@ -4,24 +4,21 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PluvIAmap — Sistema de Alerta Temprana</title>
-  
+
   <!-- Leaflet CSS & JS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  
+
   <!-- Chart.js para Histogramas -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <!-- Supabase JS Client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  <!-- LIBRERÍA CRÍTICA: WKT Parser para parsear la columna geom -->
-  <script src="https://unpkg.com/wellknown@0.5.0/wellknown.js"></script>
-
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0b0f14; color: #cfd8e3; display: flex; flex-direction: column; height: 100vh; }
-    
+
     nav { background: #141a22; display: flex; border-bottom: 1px solid #2a3440; }
     nav button { background: none; border: none; color: #8a99ad; padding: 14px 20px; font-size: 14px; cursor: pointer; font-weight: bold; }
     nav button.active { color: #00bcd4; border-bottom: 2px solid #00bcd4; background: #1a232e; }
@@ -35,6 +32,7 @@
     .card { background: #1a232e; border: 1px solid #2a3440; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
     .risk-badge { font-weight: bold; padding: 4px 8px; border-radius: 4px; color: #fff; display: inline-block; }
   </style>
+<base target="_blank">
 </head>
 <body>
 
@@ -55,11 +53,11 @@
   <!-- Pestaña 2: Pronóstico & Mapa de Riesgo -->
   <div id="tab-pronostico" class="tab-content active">
     <div id="mapa-pronostico"></div>
-    
+
     <div id="sidebar-info">
       <h3>Análisis de Cuadrícula</h3>
       <p style="font-size: 12px; color: #8a99ad; margin-bottom: 15px;">Haga clic sobre un polígono de la grilla en el mapa para ver sus métricas.</p>
-      
+
       <div id="detalles-celda" class="card">
         <p><i>Seleccione una celda en el mapa</i></p>
       </div>
@@ -86,16 +84,16 @@
     // Configuración Supabase
     const SUPABASE_URL = "https://mhkbecpnmhiwcfpdazgu.supabase.co";
     const SUPABASE_ANON_KEY = "sb_publishable_19oa93T11cZaS9gyai3AVQ_D3Ne_2C0"; 
-    
+
     const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     // Gestor de Pestañas
     function switchTab(tabId) {
       document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
       document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-      
+
       document.getElementById(tabId).classList.add('active');
-      
+
       if (window.event && window.event.currentTarget) {
         window.event.currentTarget.classList.add('active');
       }
@@ -114,47 +112,28 @@
     let chartInstance = null;
     let geojsonLayer = null;
 
-    // --- Cargar Celdas desde Supabase ---
+    // --- Cargar Celdas desde Supabase vía RPC (sin límite de 1000 filas) ---
     async function cargarGrillaRiesgo() {
       try {
-        // Paginación amplia para cargar las 15,170 celdas sin el límite por defecto de 1000
-        const { data, error } = await _supabase
-          .from('grilla_riesgo')
-          .select('grid_id, r_max, r_hydro, r_slide, dominant, clase, color, h_p3d, h_era5_suelo, h_openmeteo_48h, v_slope, geom')
-          .range(0, 16000);
+        console.log("Cargando datos desde Supabase...");
+
+        // Usamos la función RPC que devuelve GeoJSON completo con ST_AsGeoJSON
+        const { data, error } = await _supabase.rpc('get_grilla_riesgo');
 
         if (error) throw error;
 
-        if (!data || data.length === 0) {
-          console.log("No se devolvieron datos de la base de datos.");
+        if (!data || !data.features || data.features.length === 0) {
+          console.warn("No se devolvieron datos de la base de datos.");
+          document.getElementById('detalles-celda').innerHTML = 
+            '<p style="color:#ff6b6b;">⚠️ No hay datos disponibles en la tabla grilla_riesgo.</p>';
           return;
         }
 
-        // Convertir registros a GeoJSON procesando la geometría WKT o JSON
-        const features = data.map(item => {
-          let geometryData = null;
-
-          if (typeof item.geom === 'object' && item.geom !== null) {
-            geometryData = item.geom;
-          } else if (typeof item.geom === 'string') {
-            const wktLimpio = item.geom.replace(/^SRID=\d+;/, '');
-            if (typeof wellknown !== 'undefined') {
-              geometryData = wellknown(wktLimpio);
-            }
-          }
-
-          return {
-            type: "Feature",
-            properties: { ...item },
-            geometry: geometryData
-          };
-        }).filter(f => f.geometry !== null);
-
-        const geojsonData = { type: "FeatureCollection", features: features };
+        console.log(`Cargadas ${data.features.length} celdas.`);
 
         if (geojsonLayer) map.removeLayer(geojsonLayer);
 
-        geojsonLayer = L.geoJSON(geojsonData, {
+        geojsonLayer = L.geoJSON(data, {
           style: (feature) => ({
             fillColor: feature.properties.color || '#1a9850',
             weight: 1,
@@ -168,8 +147,13 @@
           }
         }).addTo(map);
 
+        // Ajustar el mapa a los límites de los datos
+        map.fitBounds(geojsonLayer.getBounds());
+
       } catch (err) {
-        console.error("Error al consultar Supabase:", err.message);
+        console.error("Error al consultar Supabase:", err);
+        document.getElementById('detalles-celda').innerHTML = 
+          `<p style="color:#ff6b6b;">❌ Error: ${err.message}</p>`;
       }
     }
 
