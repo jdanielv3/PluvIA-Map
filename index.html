@@ -129,11 +129,16 @@ function switchTab(tabId) {
         }
 
         // Convertir registros SQL a GeoJSON interactivo
-        const features = data.map(item => ({
-          type: "Feature",
-          geometry: JSON.parse(item.st_asgeojson),
-          properties: { ...item }
-        }));
+      const features = data.map(item => {
+  // Limpiamos el prefijo SRID que guarda PostGIS para obtener el texto WKT limpio
+  const wktLimpio = item.geom ? item.geom.replace(/^SRID=\d+;/, '') : '';
+  
+  return {
+    type: "Feature",
+    properties: { ...item },
+    geometry: wellknown(wktLimpio) // Convierte el WKT a GeoJSON que Leaflet sí comprende
+  };
+});
 
         const geojsonData = { type: "FeatureCollection", features: features };
 
